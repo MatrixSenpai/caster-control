@@ -92,10 +92,6 @@
 </head>
 <body>
 
-<!-- =======================================================
-     Static settings. Team logos and ticker items come from
-     the server (/api/live) — set those in the dashboard.
-     ======================================================= -->
 <script>
   const CONFIG = {
     orgLogo:      "/org-logo",
@@ -134,7 +130,6 @@
   document.getElementById('orgLogo').src = CONFIG.orgLogo || '';
   document.getElementById('orgWordmark').textContent = CONFIG.orgWordmark || '';
 
-  // "Hardwire/MF.png" -> "/logos/Hardwire/MF.png"
   function logoUrl(logo) {
     if (!logo) return '';
     return LOGO_URL_PREFIX + logo.split('/').map(encodeURIComponent).join('/');
@@ -157,7 +152,6 @@
       return span;
     }));
 
-    // Restart the scroll from the beginning.
     const seconds = CONFIG.scrollSeconds || 30;
     track.style.animation = 'none';
     void track.offsetWidth;

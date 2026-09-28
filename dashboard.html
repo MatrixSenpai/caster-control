@@ -198,7 +198,44 @@
         .team .name-display.empty { color: var(--muted); font-weight: 400; font-size: 14px; }
 
         label.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-        input[type=text] {
+
+        .casters {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .caster {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+        }
+        .caster .label {
+            font-size: 12px;
+            color: var(--accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .caster input.invalid { border-color: var(--danger); }
+        input.error { border-color: var(--danger) !important; }
+        .field-error { color: var(--danger); font-size: 12px; }
+        label.check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text);
+            cursor: pointer;
+            user-select: none;
+        }
+        label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+        @media (max-width: 720px) {
+            .casters { grid-template-columns: 1fr; }
+        }
+        input[type=text], input[type=url] {
             font: inherit;
             font-size: 14px;
             width: 100%;
@@ -208,7 +245,7 @@
             border-radius: 6px;
             padding: 8px 10px;
         }
-        input[type=text]:focus { outline: none; border-color: var(--accent); }
+        input[type=text]:focus, input[type=url]:focus { outline: none; border-color: var(--accent); }
 
         .ticker-list { display: grid; gap: 8px; margin-bottom: 12px; }
         .ticker-row {
@@ -296,6 +333,14 @@
     </section>
 
     <section>
+        <h2>Casters</h2>
+        <div class="casters">
+            <div class="caster" data-caster="caster_left"></div>
+            <div class="caster" data-caster="caster_right"></div>
+        </div>
+    </section>
+
+    <section>
         <h2>Ticker</h2>
         <div class="ticker-list" id="tickerList"></div>
         <button id="addTickerBtn">+ Add item</button>
@@ -312,25 +357,18 @@
 </main>
 
 <script>
-    // ---- Server endpoints (match these up in Rust) -------------------------
-    // GET  -> returns LiveConfig as JSON
-    // POST -> accepts LiveConfig as JSON, replaces the live config
     const API_URL = "/api/live";
-    // GET -> { "<league>": ["MF.png", "GA.png", ...], ... }
-    // League names are whatever the server calls them (e.g. "Hardwire").
     const LOGO_LEAGUES_URL = "/api/logos";
-    // Logos are stored as "<league>/<file>" and loaded from LOGO_URL_PREFIX + that,
-    // e.g. "/logos/Hardwire/MF.png".
     const LOGO_URL_PREFIX = "/logos/";
-    // GET -> { "connected": bool, "version": "31.0.0" (optional) }
     const OBS_STATUS_URL = "/api/obs";
     const OBS_POLL_MS = 3000;
-    // ------------------------------------------------------------------------
 
     const SAMPLE = {
         team_one: { logo: "Hardwire/MF.png", name: "Monkey's Femboys" },
         team_two: { logo: "Hardwire/GA.png", name: "Glacier Ascent" },
-        scroll_items: ["Production by MatrixSenpai", "Casting by MatrixSenpai"]
+        scroll_items: ["Production by MatrixSenpai", "Casting by MatrixSenpai"],
+        caster_left: { name: "MatrixSenpai", vdo_link: "https://vdo.ninja/?view=example", show_camera: true },
+        caster_right: { name: null, vdo_link: null, show_camera: true }
     };
 
     const SAMPLE_LEAGUES = {
@@ -341,10 +379,10 @@
 
     let state = normalize({});
     let dirty = false;
-    let leagues = {};           // league name -> [file names]
+    let showErrors = false;
+    let leagues = {};
     let leaguesLoaded = false;
 
-    // "Hardwire/MF.png" -> { league: "Hardwire", file: "MF.png" }
     function splitLogo(logo) {
         if (!logo) return { league: null, file: null };
         const i = logo.indexOf("/");
@@ -361,21 +399,26 @@
 
     function normalize(c) {
         const team = t => ({ logo: t?.logo ?? null, name: t?.name ?? null });
+        const caster = x => ({ name: x?.name ?? "", vdo_link: x?.vdo_link ?? "", show_camera: x?.show_camera ?? false });
         return {
             team_one: team(c.team_one),
             team_two: team(c.team_two),
-            scroll_items: Array.isArray(c.scroll_items) ? c.scroll_items.slice() : []
+            scroll_items: Array.isArray(c.scroll_items) ? c.scroll_items.slice() : [],
+            caster_left: caster(c.caster_left),
+            caster_right: caster(c.caster_right)
         };
     }
 
-    // Option<String> on the Rust side: send null instead of "".
     function toPayload(s) {
         const clean = v => (v && v.trim() ? v.trim() : null);
         const team = t => ({ logo: clean(t.logo), name: clean(t.name) });
+        const caster = c => ({ name: clean(c.name), vdo_link: clean(c.vdo_link), show_camera: !!c.show_camera });
         return {
             team_one: team(s.team_one),
             team_two: team(s.team_two),
-            scroll_items: s.scroll_items.map(x => x.trim()).filter(Boolean)
+            scroll_items: s.scroll_items.map(x => x.trim()).filter(Boolean),
+            caster_left: caster(s.caster_left),
+            caster_right: caster(s.caster_right)
         };
     }
 
@@ -390,6 +433,49 @@
         document.getElementById("saveBtn").disabled = false;
         setStatus("dirty", "Unsaved changes");
         renderPreview();
+        if (showErrors) applyValidation();
+    }
+
+    function validate(s) {
+        const errors = [];
+        const has = v => !!(v && v.trim());
+        const add = (field, msg) => errors.push({ field, msg });
+
+        if (!has(s.team_one.name)) add("team_one.name", "Team name is required");
+        if (!has(s.team_two.name)) add("team_two.name", "Team name is required");
+
+        const left = s.caster_left;
+        if (!has(left.name)) add("caster_left.name", "Left caster name is required");
+        if (!has(left.vdo_link)) add("caster_left.vdo_link", "Left caster VDO link is required");
+
+        const right = s.caster_right;
+        const rName = has(right.name), rLink = has(right.vdo_link);
+        if (right.show_camera && !rName && !rLink) {
+            add("caster_right.name", "Required when Show camera is on");
+            add("caster_right.vdo_link", "Required when Show camera is on");
+        } else {
+            if (rLink && !rName) add("caster_right.name", "Name is required when a VDO link is set");
+            if (rName && !rLink) add("caster_right.vdo_link", "VDO link is required when a name is set");
+        }
+
+        for (const key of ["caster_left", "caster_right"]) {
+            const v = s[key].vdo_link;
+            if (has(v) && !isUrl(v.trim())) add(key + ".vdo_link", "Not a valid URL");
+        }
+        return errors;
+    }
+
+    function applyValidation() {
+        document.querySelectorAll(".field-error").forEach(e => e.remove());
+        document.querySelectorAll("input.error").forEach(e => e.classList.remove("error"));
+        const errors = validate(state);
+        for (const { field, msg } of errors) {
+            const input = document.querySelector(`[data-field="${field}"]`);
+            if (!input || input.classList.contains("error")) continue;
+            input.classList.add("error");
+            input.after(el("span", { className: "field-error", textContent: msg }));
+        }
+        return errors;
     }
 
     function el(tag, props = {}, ...children) {
@@ -408,8 +494,6 @@
         const preview = el("div", { className: "logo-preview" });
         const nameDisplay = el("div", { className: "name-display" });
 
-        // League shown in the picker. Starts from the saved logo, falls back to
-        // the other team's league, then the first league available.
         let currentLeague = splitLogo(t.logo).league
             || splitLogo(state[otherKey].logo).league
             || Object.keys(leagues)[0]
@@ -430,6 +514,7 @@
         }
 
         const nameInput = el("input", { type: "text", value: t.name ?? "", placeholder: "Team name" });
+        nameInput.dataset.field = key + ".name";
         nameInput.oninput = () => { t.name = nameInput.value; paint(); markDirty(); };
 
         let logoControls;
@@ -438,7 +523,6 @@
             for (const name of Object.keys(leagues)) {
                 leagueSelect.append(el("option", { value: name, textContent: name, selected: name === currentLeague }));
             }
-            // Saved logo points at a league the server no longer lists.
             if (currentLeague && !(currentLeague in leagues)) {
                 leagueSelect.prepend(el("option", { value: currentLeague, textContent: currentLeague + " (missing)", selected: true }));
             }
@@ -515,6 +599,42 @@
         renderPreview();
     }
 
+    function isUrl(v) {
+        try { const u = new URL(v); return u.protocol === "https:" || u.protocol === "http:"; }
+        catch { return false; }
+    }
+
+    function renderCaster(container) {
+        const key = container.dataset.caster;
+        const c = state[key];
+        container.replaceChildren();
+
+        const name = el("input", { type: "text", value: c.name, placeholder: "Caster name" });
+        name.dataset.field = key + ".name";
+        name.oninput = () => { c.name = name.value; markDirty(); };
+
+        const link = el("input", { type: "url", value: c.vdo_link, placeholder: "https://vdo.ninja/?view=..." });
+        link.dataset.field = key + ".vdo_link";
+        function checkLink() {
+            const v = link.value.trim();
+            const ok = isUrl(v);
+            link.classList.toggle("invalid", !!v && !ok);
+            link.title = v && !ok ? "Not a valid URL" : "";
+        }
+        link.oninput = () => { c.vdo_link = link.value; checkLink(); markDirty(); };
+        checkLink();
+
+        const cam = el("input", { type: "checkbox", checked: c.show_camera });
+        cam.onchange = () => { c.show_camera = cam.checked; markDirty(); };
+
+        container.append(
+            el("div", { className: "label", textContent: key === "caster_left" ? "Left caster" : "Right caster" }),
+            el("label", { className: "field" }, "Name", name),
+            el("label", { className: "field" }, "VDO.Ninja link", link),
+            el("label", { className: "check" }, cam, "Show camera")
+        );
+    }
+
     function renderPreview() {
         const track = document.getElementById("previewTrack");
         const items = state.scroll_items.filter(x => x.trim());
@@ -524,6 +644,7 @@
 
     function renderAll() {
         document.querySelectorAll(".team").forEach(renderTeam);
+        document.querySelectorAll(".caster").forEach(renderCaster);
         renderTicker();
     }
 
@@ -556,12 +677,20 @@
         }
         await loadLeagues(offline);
         dirty = false;
+        showErrors = false;
         document.getElementById("saveBtn").disabled = true;
         renderAll();
     }
 
     async function save() {
         const btn = document.getElementById("saveBtn");
+        const errors = applyValidation();
+        if (errors.length) {
+            showErrors = true;
+            setStatus("err", `Fix ${errors.length} issue${errors.length === 1 ? "" : "s"} before saving`);
+            document.querySelector(`[data-field="${errors[0].field}"]`)?.focus();
+            return;
+        }
         btn.disabled = true;
         setStatus("", "Saving…");
         try {
@@ -570,8 +699,12 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(toPayload(state))
             });
-            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            if (!res.ok) {
+                const detail = await res.text().catch(() => "");
+                throw new Error(detail || res.status + " " + res.statusText);
+            }
             dirty = false;
+            await load();
             setStatus("ok", "Saved " + new Date().toLocaleTimeString());
         } catch (e) {
             btn.disabled = false;

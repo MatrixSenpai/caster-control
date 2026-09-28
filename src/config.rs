@@ -3,6 +3,30 @@ use anyhow::{Result, Context as _};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+pub struct ObsData {
+    pub scene: &'static str,
+    pub name: &'static str,
+    pub cam: &'static str,
+    pub audio_scene: &'static str,
+    pub audio: &'static str,
+}
+
+pub const LOGO: &'static str = "TLS Logo";
+pub const LEFT: ObsData = ObsData {
+    scene: "Left Caster",
+    name: "Left Caster Name",
+    cam: "Left Caster Cam",
+    audio_scene: "Left Caster Audio",
+    audio: "Left Caster Audio VDO"
+};
+pub const RIGHT: ObsData = ObsData {
+    scene: "Right Caster",
+    name: "Right Caster Name",
+    cam: "Right Caster Cam",
+    audio_scene: "Right Caster Audio",
+    audio: "Right Caster Audio VDO"
+};
+
 #[derive(Clone, Debug, Default)]
 pub struct AppConfig {
     pub local: LocalConfig,
@@ -44,11 +68,15 @@ impl LocalConfig {
 fn base_logo_dir() -> String { "./logos".to_string() }
 fn base_obs_port() -> u16 { 4455 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct LiveConfig {
-    team_one: TeamConfig,
-    team_two: TeamConfig,
-    scroll_items: Vec<String>,
+    pub team_one: TeamConfig,
+    pub team_two: TeamConfig,
+    #[serde(default)]
+    pub caster_left: CasterConfig,
+    #[serde(default)]
+    pub caster_right: CasterConfig,
+    pub scroll_items: Vec<String>,
 }
 impl LiveConfig {
     pub fn new() -> Self {
@@ -59,8 +87,15 @@ impl LiveConfig {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct TeamConfig {
-    logo: Option<String>,
-    name: Option<String>,
+    pub logo: Option<String>,
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct CasterConfig {
+    pub name: Option<String>,
+    pub vdo_link: Option<String>,
+    pub show_camera: bool,
 }
