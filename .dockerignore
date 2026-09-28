@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+.github/
+logos/
+*.log
+live_config.toml
+config.toml

@@ -1,0 +1,97 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "caster-control") | .version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+      - name: Check for existing release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.version.outputs.tag }} already exists; building without releasing."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      # cargo-chef keeps dependencies in their own layer; the GHA cache
+      # carries that layer between runs.
+      - name: Build Windows exe (cargo-chef)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: export
+          outputs: type=local,dest=out
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Package zip
+        id: package
+        run: |
+          name="caster-control-${{ steps.version.outputs.tag }}-windows"
+          mkdir -p "dist/$name"
+          cp out/caster-control.exe "dist/$name/"
+          cp dashboard.html broadcast-bar.html cast.json config.example.toml "dist/$name/"
+          cp -r logos "dist/$name/"
+          (cd dist && zip -r "$name.zip" "$name")
+          echo "zip=dist/$name.zip" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caster-control-windows
+          path: ${{ steps.package.outputs.zip }}
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${{ steps.package.outputs.zip }}" \
+            cast.json \
+            --title "${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --generate-notes
+
+      - name: Notify Discord
+        if: steps.check.outputs.exists == 'false'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ steps.version.outputs.tag }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL secret not set; skipping."
+            exit 0
+          fi
+          jq -n --arg tag "$TAG" --arg url "$URL" '{
+            username: "Caster Control",
+            embeds: [{
+              title: ("Caster Control " + $tag + " released"),
+              url: $url,
+              description: "A new build is ready to download.",
+              color: 6146725
+            }]
+          }' | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"

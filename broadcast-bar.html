@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    width: 1920px;
+    height: 90px;
+  }
+
+  .bar {
+    position: relative;
+    width: 1920px;
+    height: 90px;
+    background: #10162E;
+    border-top: 3px solid #5DCAA5;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  .org-block {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 34px;
+    flex-shrink: 0;
+  }
+  .org-block img { height: 50px; width: auto; }
+  .org-block .wordmark { color: #B4B2A9; font-weight: bold; font-size: 18px; letter-spacing: 1px; }
+
+  .divider {
+    width: 50px;
+    height: 90px;
+    background: #5DCAA5;
+    flex-shrink: 0;
+    margin: 0 4px;
+  }
+
+  :nth-child(1 of .divider) {
+      transform: skewX(20deg);
+  }
+  :nth-last-child(1 of .divider) {
+    transform: skewX(-20deg);
+    margin-left: 20px;
+  }
+
+  .vs-block {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .vs-block img { height: 46px; width: 46px; object-fit: contain; }
+  .vs-block .vs-text { color: #FAC775; font-weight: bold; font-size: 22px; }
+
+  .ticker-wrap {
+    flex: 1 1 auto;
+    height: 90px;
+    overflow: hidden;
+    position: relative;
+    min-width: 0;
+  }
+  .ticker-track {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 90px;
+    display: flex;
+    gap: 1150px;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .ticker-track span {
+    display: inline-block;
+    color: #FAC775;
+    font-size: 22px;
+    font-weight: bold;
+  }
+  @keyframes scroll {
+    0%   { transform: translateX(100vw); }
+    100% { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+
+<!-- =======================================================
+     Static settings. Team logos and ticker items come from
+     the server (/api/live) — set those in the dashboard.
+     ======================================================= -->
+<script>
+  const CONFIG = {
+    orgLogo:      "/org-logo",
+    orgWordmark:  "TLS",
+
+    scrollSeconds: 60
+  };
+
+  const LIVE_URL = "/api/live";
+  const LOGO_URL_PREFIX = "/logos/";
+</script>
+<!-- ======================================================= -->
+
+<div class="bar">
+  <div class="org-block">
+    <img id="orgLogo" src="" alt="org logo">
+    <span class="wordmark" id="orgWordmark"></span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="vs-block">
+    <img id="team1Logo" src="" alt="team 1">
+    <span class="vs-text">VS</span>
+    <img id="team2Logo" src="" alt="team 2">
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="ticker-wrap">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('orgLogo').src = CONFIG.orgLogo || '';
+  document.getElementById('orgWordmark').textContent = CONFIG.orgWordmark || '';
+
+  // "Hardwire/MF.png" -> "/logos/Hardwire/MF.png"
+  function logoUrl(logo) {
+    if (!logo) return '';
+    return LOGO_URL_PREFIX + logo.split('/').map(encodeURIComponent).join('/');
+  }
+
+  function setTeamLogo(id, team) {
+    const img = document.getElementById(id);
+    const src = logoUrl(team && team.logo);
+    img.style.visibility = src ? 'visible' : 'hidden';
+    if (src) img.src = src;
+    else img.removeAttribute('src');
+  }
+
+  function renderTicker(items) {
+    const track = document.getElementById('tickerTrack');
+    const doubled = items.concat(items);
+    track.replaceChildren(...doubled.map(t => {
+      const span = document.createElement('span');
+      span.textContent = t;
+      return span;
+    }));
+
+    // Restart the scroll from the beginning.
+    const seconds = CONFIG.scrollSeconds || 30;
+    track.style.animation = 'none';
+    void track.offsetWidth;
+    track.style.animation = `scroll ${seconds}s linear infinite`;
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(LIVE_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      const live = await res.json();
+
+      setTeamLogo('team1Logo', live.team_one);
+      setTeamLogo('team2Logo', live.team_two);
+      renderTicker(Array.isArray(live.scroll_items) ? live.scroll_items : []);
+    } catch (e) {
+      console.warn('Could not load live config:', e);
+    }
+  }
+
+  refresh();
+</script>
+
+</body>
+</html>

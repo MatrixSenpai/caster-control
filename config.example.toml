@@ -1,0 +1,9 @@
+broadcast_bar_file = "./broadcast-bar.html"
+obs_port = 4455
+# obs_password = "your-password"
+
+[leagues]
+Hardwire = "./logos/Hardwire"
+Overclock = "./logos/Overclock"
+Surge = "./logos/Surge"
+"Other Orgs" = "./logos/Other Orgs"

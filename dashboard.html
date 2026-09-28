@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Caster Control</title>
+    <style>
+        :root {
+            --bg: #0B1022;
+            --panel: #10162E;
+            --panel-2: #161E3D;
+            --line: #26305A;
+            --text: #E8E6DF;
+            --muted: #8D8B84;
+            --accent: #5DCAA5;
+            --gold: #FAC775;
+            --danger: #E5707A;
+            --radius: 10px;
+            font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 24px;
+            background: var(--panel);
+            border-bottom: 3px solid var(--accent);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+        .status.ok .dot { background: var(--accent); }
+        .status.err .dot { background: var(--danger); }
+        .status.dirty .dot { background: var(--gold); }
+        header .spacer { flex: 1; }
+
+        .obs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            font-size: 13px;
+            color: var(--muted);
+            background: var(--panel-2);
+        }
+        .obs svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .obs .obs-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+        .obs.connected { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+        .obs.connected svg { color: var(--accent); }
+        .obs.connected .obs-dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+        .obs.disconnected svg { color: var(--danger); }
+        .obs.disconnected .obs-dot { background: var(--danger); }
+
+        button {
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid var(--line);
+            background: var(--panel-2);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover { border-color: var(--accent); }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #0B1022; }
+        button.primary:hover { filter: brightness(1.1); }
+        button.primary:disabled { opacity: .45; cursor: default; filter: none; }
+        button.icon { padding: 6px 10px; line-height: 1; }
+        button.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            gap: 24px;
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        section {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        section h2 {
+            margin: 0 0 16px;
+            font-size: 13px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+        }
+
+        .matchup {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            align-items: center;
+        }
+        .vs {
+            color: var(--gold);
+            font-weight: 800;
+            font-size: 26px;
+        }
+
+        .team {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+        }
+        .team .label {
+            font-size: 12px;
+            color: var(--accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .logo-preview {
+            height: 110px;
+            display: grid;
+            place-items: center;
+            background: var(--bg);
+            border-radius: 8px;
+            border: 1px dashed var(--line);
+            overflow: hidden;
+        }
+        .logo-preview img { max-height: 90px; max-width: 90%; object-fit: contain; }
+        .logo-preview .none { color: var(--muted); font-size: 13px; }
+
+        select {
+            font: inherit;
+            font-size: 14px;
+            width: 100%;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        select:focus { outline: none; border-color: var(--accent); }
+
+        .logo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+            gap: 6px;
+            max-height: 176px;
+            overflow-y: auto;
+            padding: 2px;
+        }
+        .logo-grid button {
+            display: grid;
+            gap: 4px;
+            justify-items: center;
+            padding: 6px 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--muted);
+            background: var(--bg);
+        }
+        .logo-grid button img { width: 40px; height: 40px; object-fit: contain; }
+        .logo-grid button.selected { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
+        .logo-grid .grid-note { grid-column: 1 / -1; color: var(--muted); font-size: 13px; padding: 4px 0; }
+        .team .name-display {
+            font-size: 20px;
+            font-weight: 700;
+            text-align: center;
+            min-height: 26px;
+        }
+        .team .name-display.empty { color: var(--muted); font-weight: 400; font-size: 14px; }
+
+        label.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+        input[type=text] {
+            font: inherit;
+            font-size: 14px;
+            width: 100%;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        input[type=text]:focus { outline: none; border-color: var(--accent); }
+
+        .ticker-list { display: grid; gap: 8px; margin-bottom: 12px; }
+        .ticker-row {
+            display: grid;
+            grid-template-columns: 28px 1fr auto auto auto;
+            gap: 8px;
+            align-items: center;
+        }
+        .ticker-row .idx { color: var(--muted); font-size: 13px; text-align: right; }
+        .empty-note { color: var(--muted); font-size: 14px; padding: 6px 0 10px; }
+
+        .preview-bar {
+            height: 56px;
+            background: #10162E;
+            border-top: 3px solid var(--accent);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .preview-bar .track {
+            display: flex;
+            gap: 120px;
+            white-space: nowrap;
+            color: var(--gold);
+            font-weight: 700;
+            font-size: 16px;
+            padding-left: 100%;
+            animation: scroll 20s linear infinite;
+        }
+        @keyframes scroll { to { transform: translateX(-100%); } }
+
+        pre.raw {
+            margin: 0;
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            color: var(--muted);
+            overflow: auto;
+            max-height: 240px;
+        }
+        details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+        details[open] summary { margin-bottom: 10px; }
+
+        @media (max-width: 720px) {
+            header { flex-wrap: wrap; padding: 12px 16px; }
+            main { padding: 16px; }
+            .matchup { grid-template-columns: 1fr; }
+            .vs { text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Caster Control</h1>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Loading…</span></div>
+    <div class="spacer"></div>
+    <div class="obs" id="obs" title="Checking OBS connection…">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M16.24 7.76a6 6 0 0 1 0 8.49"/>
+            <path d="M7.76 16.24a6 6 0 0 1 0-8.49"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            <path d="M4.93 19.07a10 10 0 0 1 0-14.14"/>
+        </svg>
+        <span id="obsText">OBS</span>
+        <span class="obs-dot"></span>
+    </div>
+    <button id="reloadBtn" title="Discard edits and reload from server">Reload</button>
+    <button id="saveBtn" class="primary" disabled>Save</button>
+</header>
+
+<main>
+    <section>
+        <h2>Matchup</h2>
+        <div class="matchup">
+            <div class="team" data-team="team_one"></div>
+            <div class="vs">VS</div>
+            <div class="team" data-team="team_two"></div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Ticker</h2>
+        <div class="ticker-list" id="tickerList"></div>
+        <button id="addTickerBtn">+ Add item</button>
+        <h2 style="margin-top:20px">Preview</h2>
+        <div class="preview-bar"><div class="track" id="previewTrack"></div></div>
+    </section>
+
+    <section>
+        <details>
+            <summary>Raw JSON</summary>
+            <pre class="raw" id="raw"></pre>
+        </details>
+    </section>
+</main>
+
+<script>
+    // ---- Server endpoints (match these up in Rust) -------------------------
+    // GET  -> returns LiveConfig as JSON
+    // POST -> accepts LiveConfig as JSON, replaces the live config
+    const API_URL = "/api/live";
+    // GET -> { "<league>": ["MF.png", "GA.png", ...], ... }
+    // League names are whatever the server calls them (e.g. "Hardwire").
+    const LOGO_LEAGUES_URL = "/api/logos";
+    // Logos are stored as "<league>/<file>" and loaded from LOGO_URL_PREFIX + that,
+    // e.g. "/logos/Hardwire/MF.png".
+    const LOGO_URL_PREFIX = "/logos/";
+    // GET -> { "connected": bool, "version": "31.0.0" (optional) }
+    const OBS_STATUS_URL = "/api/obs";
+    const OBS_POLL_MS = 3000;
+    // ------------------------------------------------------------------------
+
+    const SAMPLE = {
+        team_one: { logo: "Hardwire/MF.png", name: "Monkey's Femboys" },
+        team_two: { logo: "Hardwire/GA.png", name: "Glacier Ascent" },
+        scroll_items: ["Production by MatrixSenpai", "Casting by MatrixSenpai"]
+    };
+
+    const SAMPLE_LEAGUES = {
+        "Hardwire": ["BBC.png", "GA.png", "MF.png", "SM.png"],
+        "Overclock": ["BBC.png", "CI.png", "SM.png"],
+        "Surge": ["BLT.png", "TSM.png"]
+    };
+
+    let state = normalize({});
+    let dirty = false;
+    let leagues = {};           // league name -> [file names]
+    let leaguesLoaded = false;
+
+    // "Hardwire/MF.png" -> { league: "Hardwire", file: "MF.png" }
+    function splitLogo(logo) {
+        if (!logo) return { league: null, file: null };
+        const i = logo.indexOf("/");
+        return i < 0 ? { league: null, file: logo } : { league: logo.slice(0, i), file: logo.slice(i + 1) };
+    }
+
+    function logoUrl(league, file) {
+        return LOGO_URL_PREFIX + (league ? encodeURIComponent(league) + "/" : "") + encodeURIComponent(file);
+    }
+
+    function stripExt(file) {
+        return file.replace(/\.[^.]+$/, "");
+    }
+
+    function normalize(c) {
+        const team = t => ({ logo: t?.logo ?? null, name: t?.name ?? null });
+        return {
+            team_one: team(c.team_one),
+            team_two: team(c.team_two),
+            scroll_items: Array.isArray(c.scroll_items) ? c.scroll_items.slice() : []
+        };
+    }
+
+    // Option<String> on the Rust side: send null instead of "".
+    function toPayload(s) {
+        const clean = v => (v && v.trim() ? v.trim() : null);
+        const team = t => ({ logo: clean(t.logo), name: clean(t.name) });
+        return {
+            team_one: team(s.team_one),
+            team_two: team(s.team_two),
+            scroll_items: s.scroll_items.map(x => x.trim()).filter(Boolean)
+        };
+    }
+
+    function setStatus(kind, text) {
+        const el = document.getElementById("status");
+        el.className = "status " + kind;
+        document.getElementById("statusText").textContent = text;
+    }
+
+    function markDirty() {
+        dirty = true;
+        document.getElementById("saveBtn").disabled = false;
+        setStatus("dirty", "Unsaved changes");
+        renderPreview();
+    }
+
+    function el(tag, props = {}, ...children) {
+        const e = document.createElement(tag);
+        Object.assign(e, props);
+        for (const c of children) e.append(c);
+        return e;
+    }
+
+    function renderTeam(container) {
+        const key = container.dataset.team;
+        const otherKey = key === "team_one" ? "team_two" : "team_one";
+        const t = state[key];
+        container.replaceChildren();
+
+        const preview = el("div", { className: "logo-preview" });
+        const nameDisplay = el("div", { className: "name-display" });
+
+        // League shown in the picker. Starts from the saved logo, falls back to
+        // the other team's league, then the first league available.
+        let currentLeague = splitLogo(t.logo).league
+            || splitLogo(state[otherKey].logo).league
+            || Object.keys(leagues)[0]
+            || null;
+
+        function paint() {
+            preview.replaceChildren();
+            if (t.logo) {
+                const { league, file } = splitLogo(t.logo);
+                const img = el("img", { src: logoUrl(league, file), alt: "" });
+                img.onerror = () => preview.replaceChildren(el("span", { className: "none", textContent: "Logo not found: " + t.logo }));
+                preview.append(img);
+            } else {
+                preview.append(el("span", { className: "none", textContent: "No logo" }));
+            }
+            nameDisplay.textContent = t.name || "No name set";
+            nameDisplay.classList.toggle("empty", !t.name);
+        }
+
+        const nameInput = el("input", { type: "text", value: t.name ?? "", placeholder: "Team name" });
+        nameInput.oninput = () => { t.name = nameInput.value; paint(); markDirty(); };
+
+        let logoControls;
+        if (leaguesLoaded && Object.keys(leagues).length) {
+            const leagueSelect = el("select");
+            for (const name of Object.keys(leagues)) {
+                leagueSelect.append(el("option", { value: name, textContent: name, selected: name === currentLeague }));
+            }
+            // Saved logo points at a league the server no longer lists.
+            if (currentLeague && !(currentLeague in leagues)) {
+                leagueSelect.prepend(el("option", { value: currentLeague, textContent: currentLeague + " (missing)", selected: true }));
+            }
+
+            const grid = el("div", { className: "logo-grid" });
+            function paintGrid() {
+                grid.replaceChildren();
+                const files = leagues[currentLeague] || [];
+                const selected = t.logo;
+
+                const none = el("button", { type: "button", className: selected ? "" : "selected", title: "No logo" },
+                    el("span", { textContent: "—", style: "font-size:22px;line-height:40px" }), "None");
+                none.onclick = () => { t.logo = null; paint(); paintGrid(); markDirty(); };
+                grid.append(none);
+
+                if (!files.length) {
+                    grid.append(el("div", { className: "grid-note", textContent: "No logos in this league." }));
+                }
+                for (const file of files) {
+                    const value = currentLeague + "/" + file;
+                    const thumb = el("img", { src: logoUrl(currentLeague, file), alt: "", loading: "lazy" });
+                    thumb.onerror = () => thumb.replaceWith(el("span", { textContent: "?", style: "font-size:20px;line-height:40px" }));
+                    const btn = el("button", { type: "button", title: value, className: value === selected ? "selected" : "" },
+                        thumb, stripExt(file));
+                    btn.onclick = () => { t.logo = value; paint(); paintGrid(); markDirty(); };
+                    grid.append(btn);
+                }
+            }
+            leagueSelect.onchange = () => { currentLeague = leagueSelect.value; paintGrid(); };
+            paintGrid();
+
+            logoControls = [
+                el("label", { className: "field" }, "League", leagueSelect),
+                el("div", { className: "field" }, el("span", { textContent: "Logo", style: "font-size:12px;color:var(--muted)" }), grid)
+            ];
+        } else {
+            // No league list from the server: fall back to typing "<league>/<file>".
+            const logoInput = el("input", { type: "text", value: t.logo ?? "", placeholder: "e.g. Hardwire/MF.png" });
+            logoInput.onchange = () => { t.logo = logoInput.value.trim(); paint(); markDirty(); };
+            logoControls = [el("label", { className: "field" }, "Logo (league/file)", logoInput)];
+        }
+
+        container.append(
+            el("div", { className: "label", textContent: key === "team_one" ? "Team 1" : "Team 2" }),
+            preview,
+            nameDisplay,
+            el("label", { className: "field" }, "Name", nameInput),
+            ...logoControls
+        );
+        paint();
+    }
+
+    function renderTicker() {
+        const list = document.getElementById("tickerList");
+        list.replaceChildren();
+        const items = state.scroll_items;
+        if (!items.length) {
+            list.append(el("div", { className: "empty-note", textContent: "No ticker items yet." }));
+        }
+        items.forEach((text, i) => {
+            const input = el("input", { type: "text", value: text });
+            input.oninput = () => { items[i] = input.value; markDirty(); };
+
+            const up = el("button", { className: "icon", textContent: "↑", title: "Move up", disabled: i === 0 });
+            up.onclick = () => { [items[i - 1], items[i]] = [items[i], items[i - 1]]; renderTicker(); markDirty(); };
+            const down = el("button", { className: "icon", textContent: "↓", title: "Move down", disabled: i === items.length - 1 });
+            down.onclick = () => { [items[i + 1], items[i]] = [items[i], items[i + 1]]; renderTicker(); markDirty(); };
+            const del = el("button", { className: "icon danger", textContent: "✕", title: "Remove" });
+            del.onclick = () => { items.splice(i, 1); renderTicker(); markDirty(); };
+
+            list.append(el("div", { className: "ticker-row" },
+                el("span", { className: "idx", textContent: i + 1 }), input, up, down, del));
+        });
+        renderPreview();
+    }
+
+    function renderPreview() {
+        const track = document.getElementById("previewTrack");
+        const items = state.scroll_items.filter(x => x.trim());
+        track.replaceChildren(...items.map(t => el("span", { textContent: t })));
+        document.getElementById("raw").textContent = JSON.stringify(toPayload(state), null, 2);
+    }
+
+    function renderAll() {
+        document.querySelectorAll(".team").forEach(renderTeam);
+        renderTicker();
+    }
+
+    async function loadLeagues(useSample) {
+        try {
+            const res = await fetch(LOGO_LEAGUES_URL, { cache: "no-store" });
+            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            leagues = await res.json();
+            leaguesLoaded = true;
+        } catch (e) {
+            console.warn("Could not load logo leagues:", e);
+            leagues = useSample ? SAMPLE_LEAGUES : {};
+            leaguesLoaded = useSample;
+        }
+    }
+
+    async function load() {
+        setStatus("", "Loading…");
+        let offline = false;
+        try {
+            const res = await fetch(API_URL, { cache: "no-store" });
+            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            state = normalize(await res.json());
+            setStatus("ok", "Synced with server");
+        } catch (e) {
+            console.warn("Could not load live config:", e);
+            state = normalize(SAMPLE);
+            offline = true;
+            setStatus("err", "Server unreachable — showing sample data");
+        }
+        await loadLeagues(offline);
+        dirty = false;
+        document.getElementById("saveBtn").disabled = true;
+        renderAll();
+    }
+
+    async function save() {
+        const btn = document.getElementById("saveBtn");
+        btn.disabled = true;
+        setStatus("", "Saving…");
+        try {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(toPayload(state))
+            });
+            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            dirty = false;
+            setStatus("ok", "Saved " + new Date().toLocaleTimeString());
+        } catch (e) {
+            btn.disabled = false;
+            setStatus("err", "Save failed: " + e.message);
+        }
+    }
+
+    document.getElementById("saveBtn").onclick = save;
+    document.getElementById("reloadBtn").onclick = () => {
+        if (!dirty || confirm("Discard unsaved changes?")) load();
+    };
+    document.getElementById("addTickerBtn").onclick = () => {
+        state.scroll_items.push("");
+        renderTicker();
+        markDirty();
+        const inputs = document.querySelectorAll("#tickerList input");
+        inputs[inputs.length - 1]?.focus();
+    };
+    document.addEventListener("keydown", e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); if (dirty) save(); }
+    });
+    window.addEventListener("beforeunload", e => { if (dirty) e.preventDefault(); });
+
+    async function pollObs() {
+        const box = document.getElementById("obs");
+        const text = document.getElementById("obsText");
+        let connected = false, detail = "";
+        try {
+            const res = await fetch(OBS_STATUS_URL, { cache: "no-store" });
+            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            const data = await res.json();
+            connected = !!data.connected;
+            detail = data.version ? "OBS " + data.version : "";
+        } catch (e) {
+            detail = "Status unavailable: " + e.message;
+        }
+        box.className = "obs " + (connected ? "connected" : "disconnected");
+        text.textContent = connected ? "OBS connected" : "OBS offline";
+        box.title = detail || (connected ? "Connected to OBS" : "Not connected to OBS");
+    }
+
+    load();
+    pollObs();
+    setInterval(pollObs, OBS_POLL_MS);
+</script>
+</body>
+</html>
